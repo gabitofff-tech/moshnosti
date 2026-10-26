@@ -31,6 +31,8 @@ def validate(e):
     for eq in e['equipment']:
         if eq['id'] in ids: raise ValueError('Повтор идентификатора оборудования')
         ids.add(eq['id'])
+        if not isinstance(eq.get('transfer_group',''),str) or len(eq.get('transfer_group',''))>120:
+            raise ValueError('Код группы совместимости: строка до 120 символов')
         if not eq['name'].strip(): raise ValueError('Укажите модель оборудования')
         number(eq['count'],'Количество оборудования',integer=True)
         if len(eq['losses'])!=3: raise ValueError('Требуются потери для трёх смен')
@@ -80,14 +82,14 @@ def calculate(e,year,month):
             qty=n['qty']; parent=n.get('parent')
             while parent:
                 qty*=nodes[parent]['qty'];parent=nodes[parent].get('parent')
-            for op in n['operations']:
+            for operation_index,op in enumerate(n['operations']):
                 eq=op['equipment']; minutes=op.get('minutes'); unit=None if minutes is None else qty*minutes/60
                 demand=None if unit is None or plan is None else unit*plan
                 if demand is None:
                     missing.add(eq);incomplete=True
                     if minutes is None: issues.append(f'{p["name"]} / {n["name"]} / {op["number"]}: не задана норма')
                 else: totals[eq]+=demand;per[eq]+=unit
-                details.append(dict(product=p['id'],product_name=p['name'],equipment=eq,node=n['code'] or n['name'],qty=qty,minutes=minutes,unit=unit,plan=plan,demand=demand,operation=op['number']))
+                details.append(dict(product=p['id'],product_name=p['name'],equipment=eq,node=n['code'] or n['name'],qty=qty,minutes=minutes,unit=unit,plan=plan,demand=demand,operation=op['number'],node_id=n['id'],operation_index=operation_index))
         products.append(dict(id=p['id'],name=p['name'],plan=plan,per=per,incomplete=incomplete))
     equipment=[]
     for eq in e['equipment']:

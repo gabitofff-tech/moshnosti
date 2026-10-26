@@ -90,3 +90,31 @@ def calendar_save(c:CalendarInput):
 def calendar_get(year:int):
     calendar_fund(year)
     return json.loads((calendar_directory()/f'{year}.json').read_text(encoding='utf-8'))
+
+
+# Global monitoring uses one consistent read of all enterprises, including incomplete ones.
+from monitoring import monitor, evaluate, workbook
+
+def all_enterprises():
+    with conn() as db:
+        return [json.loads(r[0]) for r in db.execute('SELECT body FROM enterprises ORDER BY rowid')]
+
+@app.get('/api/monitoring')
+def monitoring_data(year:int=2026, month:int=0, shift:int=1):
+    return monitor(all_enterprises(),year,month,shift)
+
+class ScenarioInput(BaseModel):
+    year:int=Field(default=2026,ge=2000,le=2100)
+    month:int=Field(default=0,ge=0,le=12)
+    shift:int=Field(default=1,ge=1,le=3)
+    transfers:list[dict]=Field(default_factory=list,max_length=500)
+
+@app.post('/api/monitoring/scenario')
+def monitoring_scenario(body:ScenarioInput):
+    return evaluate(monitoring_data(body.year,body.month,body.shift),body.transfers)
+
+@app.post('/api/monitoring/export')
+def monitoring_export(body:ScenarioInput):
+    base=monitoring_data(body.year,body.month,body.shift)
+    scenario=evaluate(base,body.transfers) if body.transfers else None
+    return StreamingResponse(workbook(base,scenario),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="monitoring.xlsx"'})

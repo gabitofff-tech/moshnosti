@@ -108,7 +108,7 @@ def smoke_test(report_path):
             assert b'<html' in request('/')
             assert len(json.loads(request('/api/catalog'))) > 0
             e=json.loads(request('/api/enterprises',{'name':'Тест EXE — завод'}))
-            e['equipment']=[dict(id='eq',name='Токарный',count=1,category=0,losses=[0,0,0])]
+            e['equipment']=[dict(id='eq',name='Токарный',count=1,category=0,losses=[0,0,0],transfer_group='TOK')]
             e['products']=[dict(id='item',name='Изделие',plans={'2026':100,'2026-01':100},nodes=[dict(id='part',code='ДЕТ.001',name='Деталь',parent=None,qty=1,operations=[dict(number='005',name='Токарная',equipment='eq',alternatives=[],minutes=30)])])]
             e=json.loads(request('/api/enterprises/'+e['id'],e,'PUT'))
             r=json.loads(request('/api/calculate/'+e['id']+'?year=2026&month=1'))
@@ -116,6 +116,21 @@ def smoke_test(report_path):
             for n in range(1,5):
                 with zipfile.ZipFile(BytesIO(request(f'/api/export/{e["id"]}/{n}?year=2026&month=1'))) as z:
                     assert 'xl/workbook.xml' in z.namelist()
+            # Verify global monitoring and a transfer using the actual packaged modules/assets.
+            assert b'renderMonitoring' in request('/static/monitoring.js')
+            recipient=json.loads(request('/api/enterprises',{'name':'Тест EXE — получатель'}))
+            recipient['equipment']=json.loads(json.dumps(e['equipment']))
+            recipient['products']=json.loads(json.dumps(e['products']))
+            recipient['products'][0]['plans']={'2026':0,'2026-01':0}
+            recipient=json.loads(request('/api/enterprises/'+recipient['id'],recipient,'PUT'))
+            monitoring=json.loads(request('/api/monitoring?year=2026&month=1&shift=1'))
+            assert monitoring['coverage']['complete']==2 and monitoring['summary']['demand']==50
+            scenario=dict(year=2026,month=1,shift=1,transfers=[dict(enterprise=e['id'],product='item',node='part',operation_index=0,target_enterprise=recipient['id'],target_equipment='eq',quantity=10,recipient_minutes=30)])
+            evaluated=json.loads(request('/api/monitoring/scenario',scenario,'POST'))
+            assert evaluated['after']['rows'][0]['demand']==45 and evaluated['after']['rows'][1]['demand']==5
+            assert json.loads(request('/api/monitoring?year=2026&month=1'))['rows'][0]['demand']==50
+            with zipfile.ZipFile(BytesIO(request('/api/monitoring/export',scenario,'POST'))) as z:
+                assert 'xl/workbook.xml' in z.namelist()
             c=json.loads(request('/api/calendar/2026'));c['source']='Проверка UTF-8 и сохранения календаря EXE'
             request('/api/calendar',c,'POST')
             assert json.loads(request('/api/calendar/2026'))['source']==c['source']
@@ -126,7 +141,7 @@ def smoke_test(report_path):
         finally:
             server.stop()
             logging.shutdown()  # Windows cannot remove the temporary directory while the log is open.
-    Path(report_path).write_text(json.dumps({'status':'passed','checks':['bundled assets','UTF-8 Cyrillic','SQLite persistence after restart','monthly calculation','four Excel exports','persistent calendar'] + (['Tk/ttk window initialization'] if sys.platform == 'win32' else [])},ensure_ascii=False,indent=2),encoding='utf-8')
+    Path(report_path).write_text(json.dumps({'status':'passed','checks':['bundled assets','UTF-8 Cyrillic','SQLite persistence after restart','monthly calculation','four Excel exports','persistent calendar','global monitoring','transfer scenario without baseline changes','monitoring Excel'] + (['Tk/ttk window initialization'] if sys.platform == 'win32' else [])},ensure_ascii=False,indent=2),encoding='utf-8')
 
 
 def main():

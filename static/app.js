@@ -6,7 +6,7 @@ const input=(v,path,type='text',extra='')=>`<input type="${type}" value="${esc(v
 const btn=(label,action,cls='')=>`<button class="${cls}" data-action="${action}">${label}</button>`;
 const period=()=>$('#month').value==='0'?$('#year').value:`${$('#year').value}-${$('#month').value.padStart(2,'0')}`;
 const params=()=>`year=${$('#year').value}&month=${$('#month').value}`;
-const tabs={overview:'Обзор мощностей',structure:'Состав и нормы',equipment:'Парк оборудования',t1:'1 · Фонд времени',t2:'2 · Трудоёмкость',t3:'3 · Загрузка и потребность',t4:'4 · Мощность изделий',calendar:'Производственный календарь'};
+const tabs={monitoring:'Мониторинг предприятий',overview:'Обзор мощностей',structure:'Состав и нормы',equipment:'Парк оборудования',t1:'1 · Фонд времени',t2:'2 · Трудоёмкость',t3:'3 · Загрузка и потребность',t4:'4 · Мощность изделий',calendar:'Производственный календарь'};
 async function api(url,options){const r=await fetch(url,options);if(!r.ok){let e=await r.json();throw Error(typeof e.detail==='string'?e.detail:JSON.stringify(e.detail))}return r.json()}
 function notify(s,error=false){$('#notice').textContent=s;$('#notice').className=error?'error':''}
 function mutate(){dirty=true;$('#save').textContent='Сохранить •'}
@@ -20,13 +20,14 @@ function settings(){return `<details class="body"><summary>Настройки т
 async function render(){
  $('#title').textContent=tabs[tab];$('#crumb').textContent=current?.name||'Рабочее пространство';
  $('#nav').innerHTML=Object.entries(tabs).map(([k,v])=>btn(v,'tab:'+k,k===tab?'active':'')).join('');
+ if(tab==='monitoring'){try{await renderMonitoring()}catch(e){notify(e.message,true);$('#content').innerHTML=panel('Мониторинг требует обновления',`<div class="body">${esc(e.message)}<br><br>${btn('Сбросить сценарий','resetTransfers')} ${btn('Настроить календарь','tab:calendar')}</div>`)}return}
  if(!current){$('#content').innerHTML=panel('Начните с предприятия','<div class="empty">Создайте предприятие, добавьте его оборудование и изделия.<br>Данные из образцов не загружаются как реальные производственные данные.</div>',btn('＋ Создать предприятие','newEnterprise','primary'));return}
  try{
  if(['overview','t1','t2','t3','t4'].includes(tab))await compute();
  let html='';
  if(tab==='equipment'){
- html=panel('Полный парк предприятия',table(['Модель / группа','Количество, ед.','Категория нормативов','Потери 1 / 2 / 3 смены, %',''],current.equipment.map((q,i)=>row([td(input(q.name,`equipment.${i}.name`)),td(input(q.count,`equipment.${i}.count`,'number','min="0" step="1"')),td(`<select data-category="${i}">${catalog.map((c,k)=>`<option value="${k}" ${q.category===k?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`),td(`<div class="toolbar">${q.losses.map((v,j)=>input(v,`equipment.${i}.losses.${j}`,'number','min="0" max="99.99" step="0.1" style="width:75px"')).join('')}</div>`),td(btn('Удалить','delEq:'+i,'danger'))])),'editor'),btn('＋ Оборудование','addEq','primary'));
- html+='<div class="note">Включайте весь парк, в том числе незагруженное оборудование. Количество — единицы взаимозаменяемой модели. Альтернативы выбираются в карточке операции; загрузка начисляется только выбранной модели.</div>';
+ html=panel('Полный парк предприятия',table(['Модель / группа','Код совместимости между заводами','Количество, ед.','Категория нормативов','Потери 1 / 2 / 3 смены, %',''],current.equipment.map((q,i)=>row([td(input(q.name,`equipment.${i}.name`)),td(input(q.transfer_group||'',`equipment.${i}.transfer_group`,'text','placeholder="Например, ТОК-ЧПУ-01" maxlength="120"')),td(input(q.count,`equipment.${i}.count`,'number','min="0" step="1"')),td(`<select data-category="${i}">${catalog.map((c,k)=>`<option value="${k}" ${q.category===k?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`),td(`<div class="toolbar">${q.losses.map((v,j)=>input(v,`equipment.${i}.losses.${j}`,'number','min="0" max="99.99" step="0.1" style="width:75px"')).join('')}</div>`),td(btn('Удалить','delEq:'+i,'danger'))])),'editor'),btn('＋ Оборудование','addEq','primary'));
+ html+='<div class="note">Включайте весь парк, в том числе незагруженное оборудование. Количество — единицы взаимозаменяемой модели. Одинаковый код совместимости на двух заводах означает подтверждённую пользователем применимость оборудования для переноса работ. Одинаковая категория потерь не подтверждает совместимость. Альтернативы выбираются в карточке операции; загрузка начисляется только выбранной модели.</div>';
  }else if(tab==='structure'){
  let pi=current.products.findIndex(p=>p.id===productId);if(pi<0)pi=0;let p=current.products[pi];productId=p?.id;
  html=panel('Изделия и программа выпуска',`<div class="body toolbar"><select id="product">${current.products.map(p=>`<option value="${p.id}" ${p.id===productId?'selected':''}>${esc(p.name)}</option>`).join('')}</select>${btn('＋ Изделие','addProduct','primary')}${p?btn('Удалить изделие','delProduct:'+pi,'danger'):''}</div>`+(p?`<div class="body form"><label>Обозначение / название${input(p.name,`products.${pi}.name`)}</label><label>Программа на ${period()}, шт.${input(p.plans[period()],`products.${pi}.plans.${period()}`,'number','min="0" step="1"')}</label></div>`:''));
@@ -67,6 +68,7 @@ function selection(){ $('#enterprise').innerHTML=enterprises.map(e=>`<option val
 async function action(a){try{
  let [cmd,arg]=a.split(':');let p=current?.products.find(p=>p.id===productId),n=p?.nodes.find(n=>n.id===nodeId);
  if(cmd==='tab'){tab=arg;await render();return}
+ if(await monitoringAction(cmd,arg))return;
  if(cmd==='node'){nodeId=arg;await render();return}
  if(cmd==='newEnterprise'){if(dirty)await save();let name=prompt('Название предприятия');if(!name)return;current=await api('/api/enterprises',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});enterprises.push(current);selection();tab='equipment';}
  else if(cmd==='addEq'){current.equipment.push({id:uid(),name:'Новое оборудование',count:1,category:0,losses:[...catalog[0].losses]});mutate()}
