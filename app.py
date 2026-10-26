@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -9,12 +10,20 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from engine import calculate,validate,ROOT,CATALOG,calendar_fund
 from exports import export
+from runtime_paths import data_directory, calendar_directory
 
-DB=Path(os.environ.get('CAPACITY_DB',ROOT/'data/capacity.sqlite'))
+DB=Path(os.environ.get('CAPACITY_DB',data_directory()/'capacity.sqlite'))
 DB.parent.mkdir(parents=True,exist_ok=True)
 
+@contextmanager
 def conn():
-    db=sqlite3.connect(DB); db.execute('CREATE TABLE IF NOT EXISTS enterprises(id TEXT PRIMARY KEY, body TEXT NOT NULL, revision INTEGER NOT NULL)');return db
+    db=sqlite3.connect(DB)
+    try:
+        with db:
+            db.execute('CREATE TABLE IF NOT EXISTS enterprises(id TEXT PRIMARY KEY, body TEXT NOT NULL, revision INTEGER NOT NULL)')
+            yield db
+    finally:
+        db.close()
 with conn(): pass
 app=FastAPI(title='Производственные мощности')
 app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
@@ -75,9 +84,9 @@ def calendar_save(c:CalendarInput):
     for field in [c.holidays,c.working,c.shortened]:
         for day in field:datetime.date.fromisoformat(f'{c.year}-{day}')
     if set(c.holidays)&set(c.working):raise ValueError('День одновременно указан рабочим и выходным')
-    (ROOT/'calendars'/f'{c.year}.json').write_text(json.dumps(c.model_dump(),ensure_ascii=False,indent=2))
+    (calendar_directory()/f'{c.year}.json').write_text(json.dumps(c.model_dump(),ensure_ascii=False,indent=2), encoding='utf-8')
     return calendar_fund(c.year)
 @app.get('/api/calendar/{year}')
 def calendar_get(year:int):
     calendar_fund(year)
-    return json.loads((ROOT/'calendars'/f'{year}.json').read_text())
+    return json.loads((calendar_directory()/f'{year}.json').read_text(encoding='utf-8'))

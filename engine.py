@@ -5,14 +5,14 @@ import json
 import math
 from pathlib import Path
 
-ROOT = Path(__file__).parent
-CATALOG = json.loads((ROOT/'templates/catalog.json').read_text())
+from runtime_paths import ROOT, calendar_directory
+CATALOG = json.loads((ROOT/'templates/catalog.json').read_text(encoding='utf-8'))
 
 def calendar_fund(year, month=0):
-    path = ROOT/'calendars'/f'{year}.json'
+    path = calendar_directory()/f'{year}.json'
     if not path.exists():
         raise ValueError(f'Календарь {year} не загружен. Загрузите подтверждённый календарь в настройках.')
-    c = json.loads(path.read_text())
+    c = json.loads(path.read_text(encoding='utf-8'))
     days, hours, short = 0, 0, 0
     for m in ([month] if month else range(1,13)):
         for d in range(1,calendar.monthrange(year,m)[1]+1):

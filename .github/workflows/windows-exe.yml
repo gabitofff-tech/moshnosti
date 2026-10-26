@@ -1,0 +1,46 @@
+name: Windows EXE
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+      - name: Install build and test dependencies
+        run: python -m pip install -r requirements-build.txt httpx==0.28.1
+      - name: Test calculation and export logic
+        run: python -m unittest discover -s tests -v
+      - name: Build and test the Windows executable
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - name: Retain executable and test evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moshnosti-Windows-x64
+          path: |
+            dist/Moshnosti.exe
+            dist/smoke-test.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish downloadable Windows build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "windows-v0.1.${{ github.run_number }}" dist/Moshnosti.exe dist/SHA256SUMS.txt dist/smoke-test.json --target "${{ github.sha }}" --title "Производственные мощности — Windows 0.1.${{ github.run_number }}" --notes "Windows 10/11 x64. Скачайте Moshnosti.exe и запустите двойным щелчком. Python и Excel для работы не требуются. Программа откроется в браузере; окно запуска оставьте открытым. Данные сохраняются в %LOCALAPPDATA%\Moshnosti. EXE автоматически проверен на Windows: месячный расчёт, четыре Excel-выгрузки, сохранение данных и календаря. Это локальная версия без корпоративных ролей доступа." --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Не удалось опубликовать релиз' }
