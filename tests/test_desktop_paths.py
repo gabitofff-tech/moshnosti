@@ -11,7 +11,7 @@ class DesktopPathsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {'CAPACITY_DATA_DIR':tmp}), patch('sys.frozen',True,create=True):
                 folder=runtime_paths.calendar_directory()
-                self.assertEqual(folder,Path(tmp)/'calendars')
+                self.assertEqual(folder,Path(tmp).resolve()/'calendars')
                 p=folder/'2026.json';data=json.loads(p.read_text(encoding='utf-8'))
                 data['source']='Проверенный календарь предприятия'
                 p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')

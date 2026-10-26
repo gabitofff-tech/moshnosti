@@ -9,7 +9,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Ошибка сборки EXE' }
 $exe = Join-Path (Get-Location) 'dist/Moshnosti.exe'
 $report = Join-Path (Get-Location) 'dist/smoke-test.json'
 $p = Start-Process -FilePath $exe -ArgumentList @('--smoke-test', ('"{0}"' -f $report)) -Wait -PassThru
-if ($p.ExitCode -ne 0) { throw "EXE smoke test failed: $($p.ExitCode)" }
+if ($p.ExitCode -ne 0) {
+  if (Test-Path $report) {
+    $details = (Get-Content $report -Raw -Encoding utf8 | ConvertFrom-Json).error
+    $escaped = $details.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+    Write-Host "::error title=Packaged EXE test failed::$escaped"
+  }
+  throw "EXE smoke test failed: $($p.ExitCode)"
+}
 if (!(Test-Path $report)) { throw 'EXE did not create a readiness report' }
 if ((Get-Content $report -Raw | ConvertFrom-Json).status -ne 'passed') { throw 'EXE readiness checks failed' }
 $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()

@@ -125,7 +125,12 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--smoke-test',metavar='REPORT_JSON')
     args=parser.parse_args()
     if args.smoke_test:
-        smoke_test(args.smoke_test)
+        try:
+            smoke_test(args.smoke_test)
+        except Exception:
+            import traceback
+            Path(args.smoke_test).write_text(json.dumps({'status':'failed','error':traceback.format_exc()},ensure_ascii=False,indent=2),encoding='utf-8')
+            raise SystemExit(1)
     else:
         try:run_window()
         except Exception as exc:
