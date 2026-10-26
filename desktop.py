@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 import socket
+import sys
 import threading
 import time
 import urllib.request
@@ -98,6 +99,11 @@ def smoke_test(report_path):
             req=urllib.request.Request(server.url+path,data=None if body is None else json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json'},method=method)
             with urllib.request.urlopen(req,timeout=20) as r: return r.read()
         try:
+            if sys.platform == 'win32':
+                import tkinter as tk
+                from tkinter import ttk
+                window = tk.Tk(); window.withdraw()
+                ttk.Label(window, text=TITLE).pack(); window.update(); window.destroy()
             server.start()
             assert b'<html' in request('/')
             assert len(json.loads(request('/api/catalog'))) > 0
@@ -117,8 +123,10 @@ def smoke_test(report_path):
             server.stop();server=LocalServer();server.start()
             assert json.loads(request('/api/enterprises'))[0]['name']==e['name']
             assert json.loads(request('/api/calendar/2026'))['source']==c['source']
-        finally: server.stop()
-    Path(report_path).write_text(json.dumps({'status':'passed','checks':['bundled assets','UTF-8 Cyrillic','SQLite persistence after restart','monthly calculation','four Excel exports','persistent calendar']},ensure_ascii=False,indent=2),encoding='utf-8')
+        finally:
+            server.stop()
+            logging.shutdown()  # Windows cannot remove the temporary directory while the log is open.
+    Path(report_path).write_text(json.dumps({'status':'passed','checks':['bundled assets','UTF-8 Cyrillic','SQLite persistence after restart','monthly calculation','four Excel exports','persistent calendar'] + (['Tk/ttk window initialization'] if sys.platform == 'win32' else [])},ensure_ascii=False,indent=2),encoding='utf-8')
 
 
 def main():
